@@ -21,6 +21,13 @@ if (!url) {
   process.exit(1);
 }
 const isLocal = /localhost|127\.0\.0\.1/.test(url);
+if (!isLocal && process.env.CONFIRM_RESET !== "yes") {
+  console.error(
+    "Refusing to wipe a non-local database (this looks remote, e.g. Heroku).\n" +
+      "If you REALLY mean it, run:  CONFIRM_RESET=yes npm run db:reset\n"
+  );
+  process.exit(1);
+}
 const client = new pg.Client({ connectionString: url, ssl: isLocal ? false : { rejectUnauthorized: false } });
 
 await client.connect();
