@@ -1,0 +1,21 @@
+{
+  "name": "Freedom CC",
+  "description": "Club cricket: match days, team selection and ball-by-ball scoring.",
+  "repository": "https://github.com/your-org/freedom-cc",
+  "keywords": ["cricket", "pwa", "next"],
+  "env": {
+    "JWT_SECRET": {
+      "description": "Long random string used to sign session cookies.",
+      "generator": "secret"
+    },
+    "APP_URL": {
+      "description": "Public URL of the deployed app, e.g. https://freedom-cc.herokuapp.com"
+    }
+  },
+  "addons": [
+    { "plan": "heroku-postgresql:essential-0" }
+  ],
+  "buildpacks": [
+    { "url": "heroku/nodejs" }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "Freedom Cricket Club",
+  "short_name": "Freedom CC",
+  "description": "Club cricket: match days, team selection and ball-by-ball scoring.",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#0b1622",
+  "theme_color": "#0f3d68",
+  "categories": ["sports", "utilities"],
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
