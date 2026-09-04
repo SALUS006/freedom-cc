@@ -1,7 +1,7 @@
 import { test, expect, field, registerViaApi } from "./fixtures";
 import { devices, type BrowserContext, type Page } from "@playwright/test";
 import { Scorer } from "./pages/scorer";
-import { latestResetLink } from "./db";
+import { hasEmail, latestResetLink } from "./db";
 
 /**
  * End-to-end walk-through of the whole app: admin creates a club, players
@@ -81,6 +81,9 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page).toHaveURL(/\/admin$/);
     inviteCode = (await page.getByTestId("invite-code").innerText()).trim();
     expect(inviteCode).toMatch(/^[A-Z0-9]{6}$/);
+
+    // the admin accepted the waiver too — they get a confirmation copy
+    expect(await hasEmail(ADMIN.email, "consent confirmation")).toBe(true);
   });
 
   test("admin adds a player by email (invite)", async () => {
@@ -115,6 +118,9 @@ test.describe("Freedom CC — full journey", () => {
       await expect(page).not.toHaveURL(/\/register/);
     }
     await page.request.post("/api/auth/sign-out");
+
+    // each of them gets a waiver confirmation email
+    expect(await hasEmail("player1@test.cc", "consent confirmation")).toBe(true);
   });
 
   test("bulk-register the rest of the squad via API", async () => {
@@ -141,6 +147,9 @@ test.describe("Freedom CC — full journey", () => {
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: /finish sign-up/i }).click();
     await expect(page).not.toHaveURL(/\/onboarding/);
+
+    // invited players accept the waiver on first sign-in too — same receipt
+    expect(await hasEmail(INVITEE.email, "consent confirmation")).toBe(true);
 
     await signIn(INVITEE.email, inviteeTempPassword, { expectFail: true });
     await expect(page.locator(".error")).toContainText(/wrong email or password/i);

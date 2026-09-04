@@ -48,3 +48,26 @@ export function inviteEmailBody(a: InviteEmailArgs): string {
   ].join("\n");
 }
 
+interface ConsentReceiptArgs {
+  clubName: string;
+  playerName: string;
+  acceptedAt: string; // ISO timestamp
+}
+
+/** Sent right after a player accepts the waiver — their copy of what they agreed to. */
+export function consentReceiptBody(a: ConsentReceiptArgs): string {
+  return [
+    `Hi ${a.playerName},`,
+    ``,
+    `This confirms you accepted ${a.clubName}'s consent & responsibility terms`,
+    `(v${CONSENT_VERSION}) on ${new Date(a.acceptedAt).toLocaleString()}.`,
+    ``,
+    ...CONSENT_CLAUSES.map((c, i) => `  ${i + 1}. ${c}`),
+    ``,
+    CONSENT_NOTE,
+    ``,
+    `Keep this email for your records.`,
+    `— ${a.clubName}`,
+  ].join("\n");
+}
+

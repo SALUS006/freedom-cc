@@ -10,21 +10,41 @@ interface Mail {
 }
 
 /**
- * Sends an email via SMTP when SMTP_URL is configured (e.g. a SendGrid / Mailgun
- * / Postmark add-on: `smtp://user:pass@host:587`). With no SMTP configured the
- * message is logged to the server console so local development still works.
- * Every attempt is recorded in email_outbox.
+ * Where to send: either discrete SMTP_HOST/PORT/USER/PASS (recommended — no URL
+ * escaping to get wrong) or a single SMTP_URL connection string. Most free
+ * providers (Brevo, Mailjet, Gmail) give you a host/port/login/key, which maps
+ * straight onto the discrete vars.
+ */
+function transportConfig(): string | Record<string, unknown> | null {
+  if (process.env.SMTP_HOST) {
+    return {
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: process.env.SMTP_SECURE === "true", // true only for port 465
+      auth: process.env.SMTP_USER
+        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        : undefined,
+    };
+  }
+  if (process.env.SMTP_URL) return process.env.SMTP_URL;
+  return null;
+}
+
+/**
+ * Sends an email via SMTP when configured (see transportConfig). With no SMTP
+ * configured the message is logged to the server console so local development
+ * still works. Every attempt is recorded in email_outbox regardless.
  */
 export async function sendEmail(mail: Mail): Promise<EmailStatus> {
-  const smtpUrl = process.env.SMTP_URL;
+  const config = transportConfig();
   const from = process.env.MAIL_FROM || "Freedom CC <no-reply@freedom-cc.app>";
   let status: EmailStatus = "logged";
   let error: string | null = null;
 
-  if (smtpUrl) {
+  if (config) {
     try {
       const nodemailer = (await import("nodemailer")).default;
-      const transport = nodemailer.createTransport(smtpUrl);
+      const transport = nodemailer.createTransport(config as never);
       await transport.sendMail({ from, to: mail.to, subject: mail.subject, text: mail.body });
       status = "sent";
     } catch (e) {

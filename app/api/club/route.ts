@@ -4,7 +4,8 @@ import { tx } from "@/lib/db";
 import { createClubSchema } from "@/lib/validation";
 import { hashPassword, randomCode, slugify } from "@/lib/auth";
 import { setSessionCookie } from "@/lib/session";
-import { CONSENT_VERSION } from "@/lib/consent";
+import { CONSENT_VERSION, consentReceiptBody } from "@/lib/consent";
+import { sendEmail } from "@/lib/email";
 import { handleError, ok } from "@/lib/api";
 
 export async function POST(req: NextRequest) {
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
         `insert into members (club_id, name, email, phone, password_hash, is_admin, roles,
            consent_version, consent_at, consent_ip)
          values ($1,$2,$3,$4,$5,true,'{}', $6, now(), $7)
-         returning id, name, is_admin`,
+         returning id, name, email, is_admin, consent_at`,
         [club.id, body.name, body.email, body.phone || null, passwordHash, CONSENT_VERSION, ip]
       );
       return { club, member: memberRes.rows[0] };
@@ -42,6 +43,17 @@ export async function POST(req: NextRequest) {
       isAdmin: true,
       name: result.member.name,
     });
+
+    await sendEmail({
+      to: result.member.email,
+      subject: `Your ${result.club.name} consent confirmation`,
+      body: consentReceiptBody({
+        clubName: result.club.name,
+        playerName: result.member.name,
+        acceptedAt: result.member.consent_at,
+      }),
+    });
+
     return ok({ ok: true, inviteCode: result.club.invite_code });
   } catch (err) {
     return handleError(err);

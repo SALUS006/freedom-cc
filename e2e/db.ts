@@ -30,6 +30,17 @@ async function withClient<T>(fn: (c: pg.Client) => Promise<T>): Promise<T> {
   }
 }
 
+/** Whether an email with a matching subject has been queued/sent to `email`. */
+export async function hasEmail(email: string, subjectLike: string): Promise<boolean> {
+  return withClient(async (c) => {
+    const { rows } = await c.query(
+      `select 1 from email_outbox where lower(to_email) = lower($1) and subject ilike $2 limit 1`,
+      [email, `%${subjectLike}%`]
+    );
+    return rows.length > 0;
+  });
+}
+
 /** The password-reset link from the most recent reset email sent to `email`. */
 export async function latestResetLink(email: string): Promise<string | null> {
   return withClient(async (c) => {

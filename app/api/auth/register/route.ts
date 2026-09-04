@@ -3,7 +3,8 @@ import { one, tx } from "@/lib/db";
 import { registerSchema } from "@/lib/validation";
 import { hashPassword } from "@/lib/auth";
 import { setSessionCookie } from "@/lib/session";
-import { CONSENT_VERSION } from "@/lib/consent";
+import { CONSENT_VERSION, consentReceiptBody } from "@/lib/consent";
+import { sendEmail } from "@/lib/email";
 import { handleError, fail, ok } from "@/lib/api";
 import type { Club } from "@/lib/types";
 
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
         `insert into members (club_id, name, email, phone, password_hash,
            consent_version, consent_at, consent_ip)
          values ($1,$2,$3,$4,$5,$6, now(), $7)
-         returning id, name, is_admin`,
+         returning id, name, email, is_admin, consent_at`,
         [club.id, body.name, body.email, body.phone || null, passwordHash, CONSENT_VERSION, ip]
       );
       return res.rows[0];
@@ -41,6 +42,17 @@ export async function POST(req: NextRequest) {
       isAdmin: member.is_admin,
       name: member.name,
     });
+
+    await sendEmail({
+      to: member.email,
+      subject: `Your ${club.name} consent confirmation`,
+      body: consentReceiptBody({
+        clubName: club.name,
+        playerName: member.name,
+        acceptedAt: member.consent_at,
+      }),
+    });
+
     return ok({ ok: true });
   } catch (err) {
     return handleError(err);
