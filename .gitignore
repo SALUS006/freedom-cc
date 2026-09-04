@@ -7,3 +7,9 @@ out
 .DS_Store
 .vercel
 next-env.d.ts
+test-results
+playwright-report
+blob-report
+.playwright
+
+tsconfig.tsbuildinfo

@@ -1,0 +1,337 @@
+import { test, expect, field, registerViaApi } from "./fixtures";
+import { devices, type BrowserContext, type Page } from "@playwright/test";
+import { Scorer } from "./pages/scorer";
+
+/**
+ * End-to-end walk-through of the whole app: admin creates a club, players
+ * register (UI + API), profiles, team selection with the balance report, a full
+ * ball-by-ball two-innings match simulation, live scorecard, sign-out.
+ *
+ * One shared browser context for the whole run (a single continuous session),
+ * serial, single worker — the app allows one club per deployment.
+ */
+test.describe.configure({ mode: "serial" });
+
+const ADMIN = { name: "Club Admin", email: "admin@test.cc", password: "test1234" };
+const INVITEE = { name: "Invitee One", email: "invitee@test.cc" };
+const PW = "test1234";
+
+let context: BrowserContext;
+let page: Page;
+let baseURL = "";
+let inviteCode = "";
+let inviteeTempPassword = "";
+let matchId = "";
+
+test.beforeAll(async ({ browser }, testInfo) => {
+  baseURL = (testInfo.project.use.baseURL as string) ?? "http://localhost:3000";
+  context = await browser.newContext({
+    baseURL,
+    ...devices["Pixel 7"],
+    serviceWorkers: "block",
+  });
+  page = await context.newPage();
+});
+
+test.afterAll(async () => {
+  await context?.close();
+});
+
+async function signIn(email: string, password: string, opts: { expectFail?: boolean } = {}) {
+  await page.request.post("/api/auth/sign-out").catch(() => {});
+  await page.goto("/sign-in");
+  await field(page, "Email").fill(email);
+  await field(page, "Password").fill(password);
+  await page.getByRole("button", { name: /^sign in$/i }).click();
+  if (opts.expectFail) {
+    await expect(page.locator(".error")).toBeVisible();
+  } else {
+    await page.waitForURL((u) => !u.pathname.startsWith("/sign-in"), { timeout: 15000 });
+  }
+}
+
+test.describe("Freedom CC — full journey", () => {
+  test("landing page shows only player options", async () => {
+    await page.goto("/welcome");
+    await expect(page.getByRole("link", { name: "Player sign in" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Register with a club code" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /admin sign in/i })).toHaveCount(0);
+    await expect(page.getByText(/invite code/i)).toHaveCount(0);
+  });
+
+  test("admin creates the club", async () => {
+    await page.goto("/admin/sign-in");
+    await expect(page.getByRole("button", { name: /sign in as admin/i })).toBeVisible();
+    await page.getByRole("link", { name: /create one/i }).click();
+
+    await expect(page.getByRole("heading", { name: /create your club/i })).toBeVisible();
+    await field(page, "Club name").fill("Test CC");
+    await field(page, "Your name").fill(ADMIN.name);
+    await field(page, "Email").fill(ADMIN.email);
+    await field(page, "Password").fill(ADMIN.password);
+
+    const submit = page.getByRole("button", { name: /create club/i });
+    await expect(submit).toBeDisabled();
+    await page.getByRole("checkbox").check();
+    await expect(submit).toBeEnabled();
+    await submit.click();
+
+    await expect(page).toHaveURL(/\/admin$/);
+    inviteCode = (await page.getByTestId("invite-code").innerText()).trim();
+    expect(inviteCode).toMatch(/^[A-Z0-9]{6}$/);
+  });
+
+  test("admin adds a player by email (invite)", async () => {
+    await page.goto("/admin");
+    await field(page, "Name").fill(INVITEE.name);
+    await field(page, "Email").fill(INVITEE.email);
+    await page.getByRole("button", { name: /add .*invite/i }).click();
+
+    const notice = page.locator(".notice, .error").first();
+    await expect(notice).toBeVisible();
+    const text = await notice.innerText();
+    inviteeTempPassword = (text.match(/([A-Z0-9]{4}-[A-Z0-9]{4})/) ?? [])[1] ?? "";
+    expect(inviteeTempPassword, `temp password in: "${text}"`).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+
+    await expect(page.getByText(INVITEE.email)).toBeVisible();
+    await expect(page.getByText("Invited").first()).toBeVisible();
+  });
+
+  test("three players register through the UI", async () => {
+    for (const n of [1, 2, 3]) {
+      await page.request.post("/api/auth/sign-out");
+      await page.goto("/register");
+      await field(page, "Invite code").fill(inviteCode);
+      await field(page, "Full name").fill(`Player-${n}`);
+      await field(page, "Email").fill(`player${n}@test.cc`);
+      await field(page, "Password").fill(PW);
+
+      const submit = page.getByRole("button", { name: /create account/i });
+      await expect(submit).toBeDisabled();
+      await page.getByRole("checkbox").check();
+      await submit.click();
+      await expect(page).not.toHaveURL(/\/register/);
+    }
+    await page.request.post("/api/auth/sign-out");
+  });
+
+  test("bulk-register the rest of the squad via API", async () => {
+    const spread = [
+      { n: 4, p: { roles: ["keeper", "batter"], isKeeper: true, batSelf: 7, bowlSelf: 3, fieldSelf: 8 } },
+      { n: 5, p: { roles: ["bowler"], batSelf: 4, bowlSelf: 8, fieldSelf: 6, happyToCaptain: true } },
+      { n: 6, p: { roles: ["allrounder"], batSelf: 7, bowlSelf: 7, fieldSelf: 6 } },
+      { n: 7, p: { roles: ["batter"], batSelf: 8, bowlSelf: 3, fieldSelf: 5 } },
+      { n: 8, p: { roles: ["keeper"], isKeeper: true, batSelf: 6, bowlSelf: 3, fieldSelf: 7 } },
+      { n: 9, p: { roles: ["bowler"], batSelf: 3, bowlSelf: 8, fieldSelf: 6 } },
+      { n: 10, p: { roles: ["batter"], batSelf: 6, bowlSelf: 4, fieldSelf: 5 } },
+    ];
+    for (const { n, p } of spread) {
+      await registerViaApi(baseURL, inviteCode, `Player-${n}`, `player${n}@test.cc`, p as never);
+    }
+  });
+
+  test("invited player completes onboarding", async () => {
+    await signIn(INVITEE.email, inviteeTempPassword);
+    await expect(page).toHaveURL(/\/onboarding$/);
+    await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible();
+    await field(page, "New password").fill("brandnew123");
+    await field(page, "Confirm password").fill("brandnew123");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /finish sign-up/i }).click();
+    await expect(page).not.toHaveURL(/\/onboarding/);
+
+    await signIn(INVITEE.email, inviteeTempPassword, { expectFail: true });
+    await expect(page.locator(".error")).toContainText(/wrong email or password/i);
+  });
+
+  test("player signs in and edits their profile", async () => {
+    await signIn("player1@test.cc", PW);
+    await page.goto("/profile");
+    await page.getByRole("button", { name: "Batter" }).click();
+    await page.getByRole("button", { name: "All-rounder" }).click();
+
+    const sliders = page.locator('input[type="range"]');
+    await sliders.nth(0).fill("9");
+    await sliders.nth(1).fill("6");
+    await sliders.nth(2).fill("7");
+
+    await page.getByRole("button", { name: /^save/i }).click();
+    await expect(page.getByRole("button", { name: /saved/i })).toBeVisible();
+
+    await page.reload();
+    await expect(sliders.nth(0)).toHaveValue("9");
+    await expect(page.getByRole("button", { name: "Batter" })).toHaveClass(/on/);
+  });
+
+  test("home shows club stats", async () => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Test CC" })).toBeVisible();
+    await expect(page.locator(".stat-tile").filter({ hasText: "Players" })).toContainText("12");
+    await expect(page.getByText(inviteCode)).toBeVisible();
+    await expect(page.getByRole("link", { name: /admin & invites/i })).toHaveCount(0);
+  });
+
+  test("players directory and a player detail", async () => {
+    await page.goto("/players");
+    await expect(page.getByText("Player-1", { exact: true })).toBeVisible();
+    await expect(page.getByText("Player-8", { exact: true })).toBeVisible();
+    await page.getByText("Player-4", { exact: true }).click();
+    await expect(page).toHaveURL(/\/players\/[0-9a-f-]+$/);
+    await expect(page.getByText(/Matches played/)).toBeVisible();
+  });
+
+  test("non-admin cannot reach the admin console", async () => {
+    await page.goto("/admin");
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("admin creates a match day", async () => {
+    await signIn(ADMIN.email, ADMIN.password);
+    await page.goto("/play/new");
+    await field(page, "Ground (optional)").fill("Test Ground");
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      await page
+        .locator(".list-tap", { hasText: new RegExp(`Player-${n}\\b`) })
+        .locator('input[type="checkbox"]')
+        .check();
+    }
+    await page.getByRole("button", { name: /create match day/i }).click();
+    await expect(page).toHaveURL(/\/play\/day\/[0-9a-f-]+$/);
+  });
+
+  test("squad selection shows the balance report, then create the match", async () => {
+    await page.getByRole("link", { name: /new match/i }).click();
+    await expect(page).toHaveURL(/\/new-match$/);
+    // 5 is the shortest preset the UI offers; the sim ends both innings early
+    // (all out / target reached) so the per-bowler over cap never bites.
+    await page.getByRole("button", { name: "5", exact: true }).click();
+
+    for (const n of [1, 2, 3, 4]) {
+      await page.getByTestId(`to-a-Player-${n}`).click();
+      await expect(page.getByTestId("side-a").getByTestId(`squad-Player-${n}`)).toBeVisible();
+    }
+    for (const n of [5, 6, 7, 8]) {
+      await page.getByTestId(`to-b-Player-${n}`).click();
+      await expect(page.getByTestId("side-b").getByTestId(`squad-Player-${n}`)).toBeVisible();
+    }
+
+    // let the debounced balance fetch settle before toggling flags
+    await expect(page.getByTestId("balance-report")).toBeVisible();
+    await page.getByTestId("captain-Player-1").click();
+    await page.getByTestId("keeper-Player-4").click();
+    await page.getByTestId("captain-Player-5").click();
+    await page.getByTestId("keeper-Player-8").click();
+
+    await expect(page.getByTestId("balance-a-overall")).toContainText(/\d\.\d \/ 10/);
+    await expect(page.getByTestId("balance-b-overall")).toContainText(/\d\.\d \/ 10/);
+    await expect(page.getByTestId("balance-verdict")).not.toBeEmpty();
+
+    await page.getByRole("button", { name: /create match & go to toss/i }).click();
+    await expect(page).toHaveURL(/\/setup$/);
+  });
+
+  test("toss and start the match", async () => {
+    await page.locator(".chip-select").first().getByRole("button").first().click(); // toss winner = Side A
+    await page.getByRole("button", { name: "Bat", exact: true }).click();
+    await page.getByRole("button", { name: /start match/i }).click();
+    await expect(page).toHaveURL(/\/score$/);
+    matchId = page.url().match(/match\/([0-9a-f-]+)/)![1];
+  });
+
+  test("first innings — every delivery type, pickers, undo, wickets, all out", async () => {
+    const s = new Scorer(page);
+    await s.pickOpeners("Player-1", "Player-2");
+    await s.pickBowler("Player-5");
+    await s.waitForKeypad();
+
+    await s.run(1);
+    await s.expectScore("1/0");
+    await s.expectStriker("Player-2");
+
+    await s.wide();
+    await s.expectScore("2/0");
+    await s.expectOvers("0.1");
+
+    await s.run(4);
+    await s.expectScore("6/0");
+
+    await s.noBall();
+    await s.expectScore("7/0");
+    await s.expectFreeHit(true);
+
+    await s.run(6);
+    await s.expectScore("13/0");
+    await s.expectFreeHit(false);
+
+    await s.bye(1);
+    await s.expectScore("14/0");
+    await s.expectStriker("Player-1");
+
+    await s.run(0);
+    await s.undo();
+    await s.expectScore("14/0");
+    await s.run(0);
+
+    await s.run(2); // 6th legal ball — over completes, new bowler required
+    await s.assertBowlerNotOffered("Player-5");
+    await s.pickBowler("Player-6");
+    await s.waitForKeypad();
+    await s.expectScore("16/0");
+
+    await s.wicket({ kind: "bowled" });
+    await s.pickNewBatter("Player-3");
+    await s.expectScore("16/1");
+
+    await s.wicket({ kind: "caught", fielder: "Player-5", crossed: true });
+    await s.pickNewBatter("Player-4");
+    await s.expectScore("16/2");
+
+    await s.wicket({ kind: "run_out", who: "striker", runs: 1, crossed: false });
+    await s.expectInningsComplete();
+    await s.expectScore("17/3");
+
+    await s.startSecondInnings();
+  });
+
+  test("home shows the match under Live now while it is in progress", async () => {
+    await page.goto("/");
+    await expect(page.getByText("Live now")).toBeVisible();
+    await expect(page.locator(".match-card").first()).toContainText(/Side A v Side B/);
+  });
+
+  test("second innings — chase down the target", async () => {
+    await page.goto(`/play/match/${matchId}/score`);
+    const s = new Scorer(page);
+    await s.pickOpeners("Player-5", "Player-6");
+    await s.pickBowler("Player-1");
+    await s.waitForKeypad();
+    await expect(page.getByTestId("chase")).toContainText("Need 18");
+
+    await s.run(6);
+    await s.run(6);
+    await s.run(6);
+    await s.expectInningsComplete();
+    await s.expectScore("18/0");
+    await s.finishMatch();
+  });
+
+  test("match view shows the result and full scorecard", async () => {
+    await expect(page).toHaveURL(/\/play\/match\/[0-9a-f-]+$/);
+    await expect(page.locator(".notice.win")).toContainText(/Side B won by 3 wickets/);
+    await expect(page.locator(".notice.win")).toContainText(/balls? to spare/);
+    await expect(page.locator("table.card-table")).toHaveCount(4);
+  });
+
+  test("live scorecard renders the final state", async () => {
+    await page.goto(`/play/match/${matchId}/live`);
+    await expect(page.getByText(/Side B won by 3 wickets/)).toBeVisible();
+    await expect(page.locator("table.card-table").first()).toBeVisible();
+    await expect(page.locator(".ballseq .ball").first()).toBeVisible();
+  });
+
+  test("sign out returns to the landing page", async () => {
+    await page.goto("/profile");
+    await page.getByRole("button", { name: /sign out/i }).click();
+    await expect(page).toHaveURL(/\/welcome$/);
+  });
+});

@@ -14,6 +14,73 @@ interface Assign {
   keeper: boolean;
 }
 
+function SideCol({
+  side,
+  list,
+  name,
+  players,
+  assign,
+  onName,
+  onRemove,
+  onToggle,
+}: {
+  side: "a" | "b";
+  list: string[];
+  name: string;
+  players: Member[];
+  assign: Record<string, Assign>;
+  onName: (v: string) => void;
+  onRemove: (pid: string) => void;
+  onToggle: (pid: string, flag: "captain" | "keeper") => void;
+}) {
+  return (
+    <div className="card tight" data-testid={`side-${side}`}>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => onName(e.target.value)}
+        style={{ fontWeight: 700, marginBottom: 6 }}
+      />
+      {list.length === 0 && <p className="small muted">Tap players below →</p>}
+      {list.map((pid) => {
+        const p = players.find((x) => x.id === pid);
+        if (!p) return null;
+        const a = assign[pid];
+        return (
+          <div
+            key={pid}
+            data-testid={`squad-${p.name}`}
+            style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}
+          >
+            <div className="row">
+              <span>{p.name}</span>
+              <button className="btn-sm btn-ghost" onClick={() => onRemove(pid)}>
+                ✕
+              </button>
+            </div>
+            <div className="chip-select" style={{ marginTop: 4 }}>
+              <button
+                data-testid={`captain-${p.name}`}
+                className={a?.captain ? "on" : ""}
+                onClick={() => onToggle(pid, "captain")}
+              >
+                (C)
+              </button>
+              <button
+                data-testid={`keeper-${p.name}`}
+                className={a?.keeper ? "on" : ""}
+                onClick={() => onToggle(pid, "keeper")}
+              >
+                (WK)
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function NewMatch() {
   const router = useRouter();
   const { id: dayId } = useParams<{ id: string }>();
@@ -34,14 +101,24 @@ export default function NewMatch() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let alive = true;
     fetch(`/api/match-days/${dayId}`)
       .then((r) => r.json())
       .then((d) => {
+        if (!alive) return;
         const list: Member[] = d.players ?? [];
         setPlayers(list);
-        setAssign(Object.fromEntries(list.map((m) => [m.id, { side: null, captain: false, keeper: false }])));
+        // merge, never clobber: a late/duplicate response must not wipe picks
+        setAssign((prev) =>
+          Object.fromEntries(
+            list.map((m) => [m.id, prev[m.id] ?? { side: null, captain: false, keeper: false }])
+          )
+        );
       })
-      .catch(() => setError("Could not load the turnout"));
+      .catch(() => alive && setError("Could not load the turnout"));
+    return () => {
+      alive = false;
+    };
   }, [dayId]);
 
   const sideIds = useCallback(
@@ -136,40 +213,6 @@ export default function NewMatch() {
     }
   }
 
-  const SideCol = ({ side, list }: { side: "a" | "b"; list: string[] }) => (
-    <div className="card tight">
-      <input
-        type="text"
-        value={side === "a" ? aName : bName}
-        onChange={(e) => (side === "a" ? setAName : setBName)(e.target.value)}
-        style={{ fontWeight: 700, marginBottom: 6 }}
-      />
-      {list.length === 0 && <p className="small muted">Tap players below →</p>}
-      {list.map((pid) => {
-        const p = players.find((x) => x.id === pid)!;
-        const a = assign[pid];
-        return (
-          <div key={pid} style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-            <div className="row">
-              <span>{p.name}</span>
-              <button className="btn-sm btn-ghost" onClick={() => setSide(pid, null)}>
-                ✕
-              </button>
-            </div>
-            <div className="chip-select" style={{ marginTop: 4 }}>
-              <button className={a.captain ? "on" : ""} onClick={() => toggleFlag(pid, "captain")}>
-                (C)
-              </button>
-              <button className={a.keeper ? "on" : ""} onClick={() => toggleFlag(pid, "keeper")}>
-                (WK)
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-
   return (
     <div>
       <div className="screen-head">
@@ -192,20 +235,46 @@ export default function NewMatch() {
       </p>
 
       <div className="grid2" style={{ marginTop: 10 }}>
-        <SideCol side="a" list={aList} />
-        <SideCol side="b" list={bList} />
+        <SideCol
+          side="a"
+          list={aList}
+          name={aName}
+          players={players}
+          assign={assign}
+          onName={setAName}
+          onRemove={(pid) => setSide(pid, null)}
+          onToggle={toggleFlag}
+        />
+        <SideCol
+          side="b"
+          list={bList}
+          name={bName}
+          players={players}
+          assign={assign}
+          onName={setBName}
+          onRemove={(pid) => setSide(pid, null)}
+          onToggle={toggleFlag}
+        />
       </div>
 
       <h2>Bench ({bench.length})</h2>
       <div className="card" style={{ padding: "4px 12px" }}>
         {bench.map((p) => (
-          <div key={p.id} className="list-tap">
+          <div key={p.id} data-testid={`bench-${p.name}`} className="list-tap">
             <span>{p.name}</span>
             <span style={{ display: "flex", gap: 6 }}>
-              <button className="btn-sm btn-ghost" onClick={() => setSide(p.id, "a")}>
+              <button
+                data-testid={`to-a-${p.name}`}
+                className="btn-sm btn-ghost"
+                onClick={() => setSide(p.id, "a")}
+              >
                 → A
               </button>
-              <button className="btn-sm btn-ghost" onClick={() => setSide(p.id, "b")}>
+              <button
+                data-testid={`to-b-${p.name}`}
+                className="btn-sm btn-ghost"
+                onClick={() => setSide(p.id, "b")}
+              >
                 → B
               </button>
             </span>
@@ -215,7 +284,7 @@ export default function NewMatch() {
       </div>
 
       {report && (
-        <>
+        <div data-testid="balance-report">
           <h2>Balance report</h2>
           {(["a", "b"] as const).map((s) => {
             const r = report[s];
@@ -223,19 +292,31 @@ export default function NewMatch() {
               <div key={s} className="card">
                 <div className="row">
                   <strong>{s === "a" ? aName : bName}</strong>
-                  <span className="pill turf">{r.overall.toFixed(1)} / 10</span>
+                  <span className="pill turf" data-testid={`balance-${s}-overall`}>
+                    {r.overall.toFixed(1)} / 10
+                  </span>
                 </div>
-                <p className="small" style={{ color: "var(--turf)", margin: "6px 0 2px" }}>
+                <p
+                  className="small"
+                  data-testid={`balance-${s}-strengths`}
+                  style={{ color: "var(--turf)", margin: "6px 0 2px" }}
+                >
                   {r.strengths.join(" · ")}
                 </p>
-                <p className="small" style={{ color: "var(--ball)", margin: 0 }}>
+                <p
+                  className="small"
+                  data-testid={`balance-${s}-weaknesses`}
+                  style={{ color: "var(--ball)", margin: 0 }}
+                >
                   {r.weaknesses.join(" · ")}
                 </p>
               </div>
             );
           })}
-          <p className="notice">{report.verdict}</p>
-        </>
+          <p className="notice" data-testid="balance-verdict">
+            {report.verdict}
+          </p>
+        </div>
       )}
 
       <h2>Rules</h2>

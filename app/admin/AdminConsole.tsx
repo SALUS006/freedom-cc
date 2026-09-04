@@ -101,6 +101,7 @@ export function AdminConsole({
       <div className="card tight">
         <div className="row">
           <span
+            data-testid="invite-code"
             style={{
               fontFamily: "var(--font-display)",
               fontWeight: 700,

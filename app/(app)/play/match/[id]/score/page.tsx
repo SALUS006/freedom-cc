@@ -129,7 +129,8 @@ export default function ScorePage() {
     );
   }
 
-  if (!state.closed && state.needNewBowler) {
+  if (!state.closed && !state.needOpeners && (state.needNewBowler || !state.bowlerId)) {
+    const opening = !state.previousBowlerId;
     const eligible = bowlingSquad.filter((s) => {
       if (s.member_id === state.previousBowlerId) return false;
       const card = state.bowlers.find((b) => b.id === s.member_id);
@@ -137,8 +138,12 @@ export default function ScorePage() {
     });
     return (
       <PickOne
-        title="Next over — bowler"
-        subtitle={`${current.bowlingName} · not ${name(state.previousBowlerId)}`}
+        title={opening ? "Opening bowler" : "Next over — bowler"}
+        subtitle={
+          opening
+            ? current.bowlingName
+            : `${current.bowlingName} · not ${name(state.previousBowlerId)}`
+        }
         people={eligible.map((s) => ({
           id: s.member_id,
           name: s.name ?? "?",
@@ -171,7 +176,7 @@ export default function ScorePage() {
   if (state.closed) {
     const isFirst = current.row.seq === 1;
     return (
-      <div>
+      <div data-testid="innings-complete">
         <div className="screen-head">
           <Link className="back" href={`/play/match/${id}`} aria-label="Back">
             ‹
@@ -180,7 +185,7 @@ export default function ScorePage() {
         </div>
         <div className="scorebar">
           <div className="team">{current.battingName}</div>
-          <div className="big">
+          <div className="big" data-testid="score">
             {state.runs}/{state.wickets}
           </div>
           <div className="sub">
@@ -236,6 +241,7 @@ export default function ScorePage() {
   const runBtn = (n: number) => (
     <button
       key={n}
+      data-testid={`key-${n}`}
       className={n === 4 ? "run4" : n === 6 ? "run6" : ""}
       disabled={busy}
       onClick={() => send({ type: "delivery", payload: { runsBat: n } })}
@@ -256,47 +262,51 @@ export default function ScorePage() {
         </Link>
       </div>
 
-      <div className="scorebar">
+      <div className="scorebar" data-testid="scorebar">
         <div className="teams">
           <span className="team">{current.battingName}</span>
           <span className="team" style={{ opacity: 0.7 }}>
             v {current.bowlingName}
           </span>
         </div>
-        <div className="big">
+        <div className="big" data-testid="score">
           {state.runs}/{state.wickets}
         </div>
-        <div className="sub">
+        <div className="sub" data-testid="overs">
           {state.oversLabel} / {bundle.match.overs} overs · CRR{" "}
           {state.legalBalls ? ((state.runs / state.legalBalls) * 6).toFixed(2) : "0.00"}
         </div>
         {state.target != null && (
-          <div className="chase">
+          <div className="chase" data-testid="chase">
             Need {Math.max(0, state.target - state.runs)} off {ballsLeft} · RRR{" "}
             {ballsLeft > 0 ? (((state.target - state.runs) / ballsLeft) * 6).toFixed(2) : "—"}
           </div>
         )}
-        {state.freeHit && <span className="freehit">Free hit</span>}
+        {state.freeHit && (
+          <span className="freehit" data-testid="freehit">
+            Free hit
+          </span>
+        )}
       </div>
 
       <div className="crease">
-        <div className="bat on">
+        <div className="bat on" data-testid="crease-striker">
           <span>🏏 {name(state.strikerId)}</span>
           <span className="figs">{figs(state.strikerId)}</span>
         </div>
-        <div className="bat">
+        <div className="bat" data-testid="crease-nonstriker">
           <span>{name(state.nonStrikerId)}</span>
           <span className="figs">{figs(state.nonStrikerId)}</span>
         </div>
       </div>
 
       <div className="bowl-line">
-        <span>
+        <span data-testid="bowler">
           <strong style={{ color: "var(--fg)" }}>{name(state.bowlerId)}</strong>
           {bowlerCard &&
             ` ${Math.floor(bowlerCard.balls / 6)}.${bowlerCard.balls % 6}-${bowlerCard.runs}-${bowlerCard.wickets}`}
         </span>
-        <span className="ballseq" style={{ marginLeft: "auto" }}>
+        <span className="ballseq" data-testid="this-over" style={{ marginLeft: "auto" }}>
           {thisOver.length === 0 && <span className="ball">–</span>}
           {thisOver.map((t, i) => (
             <span
@@ -314,6 +324,7 @@ export default function ScorePage() {
         {runBtn(4)}
         {runBtn(6)}
         <button
+          data-testid="key-wide"
           className="extra"
           disabled={busy}
           onClick={() => send({ type: "delivery", payload: { runsBat: 0, extra: "wide" } })}
@@ -321,6 +332,7 @@ export default function ScorePage() {
           Wide
         </button>
         <button
+          data-testid="key-noball"
           className="extra"
           disabled={busy}
           onClick={() => send({ type: "delivery", payload: { runsBat: 0, extra: "noball" } })}
@@ -329,6 +341,7 @@ export default function ScorePage() {
         </button>
 
         <button
+          data-testid="key-bye"
           className="extra"
           disabled={busy}
           onClick={() => {
@@ -339,6 +352,7 @@ export default function ScorePage() {
           Bye
         </button>
         <button
+          data-testid="key-legbye"
           className="extra"
           disabled={busy}
           onClick={() => {
@@ -348,14 +362,24 @@ export default function ScorePage() {
         >
           Leg-bye
         </button>
-        <button className="wkt span2" disabled={busy} onClick={() => setSheet("wicket")}>
+        <button
+          data-testid="key-wicket"
+          className="wkt span2"
+          disabled={busy}
+          onClick={() => setSheet("wicket")}
+        >
           Wicket
         </button>
 
-        <button className="util span2" disabled={busy} onClick={undo}>
+        <button data-testid="key-undo" className="util span2" disabled={busy} onClick={undo}>
           ↶ Undo
         </button>
-        <button className="util span2" disabled={busy} onClick={() => setSheet("more")}>
+        <button
+          data-testid="key-more"
+          className="util span2"
+          disabled={busy}
+          onClick={() => setSheet("more")}
+        >
           More…
         </button>
       </div>
@@ -428,14 +452,20 @@ function PickOne({
   busy: boolean;
 }) {
   return (
-    <div>
+    <div data-testid="pick-one">
       <div className="screen-head">
         <h1>{title}</h1>
       </div>
       {subtitle && <p className="muted small" style={{ marginTop: -6 }}>{subtitle}</p>}
       <div className="card flush">
         {people.map((p) => (
-          <button key={p.id} className="list-tap" disabled={busy} onClick={() => onPick(p.id)}>
+          <button
+            key={p.id}
+            data-testid={`pick-${p.name}`}
+            className="list-tap"
+            disabled={busy}
+            onClick={() => onPick(p.id)}
+          >
             <span className="lead">{p.name}</span>
             {p.hint && <span className="sub">{p.hint}</span>}
           </button>
@@ -464,7 +494,7 @@ function PickTwo({
   const [striker, setStriker] = useState<string | null>(null);
   const [nonStriker, setNonStriker] = useState<string | null>(null);
   return (
-    <div>
+    <div data-testid="pick-two">
       <div className="screen-head">
         <Link className="back" href={backHref} aria-label="Back">
           ‹
@@ -474,10 +504,11 @@ function PickTwo({
       {subtitle && <p className="muted small" style={{ marginTop: -6 }}>{subtitle}</p>}
 
       <div className="section-title">On strike</div>
-      <div className="chip-select">
+      <div className="chip-select" data-testid="pick-striker">
         {people.map((p) => (
           <button
             key={p.id}
+            data-testid={`striker-${p.name}`}
             className={striker === p.id ? "on" : ""}
             onClick={() => setStriker(p.id)}
             disabled={nonStriker === p.id}
@@ -488,10 +519,11 @@ function PickTwo({
       </div>
 
       <div className="section-title">Non-striker</div>
-      <div className="chip-select">
+      <div className="chip-select" data-testid="pick-nonstriker">
         {people.map((p) => (
           <button
             key={p.id}
+            data-testid={`nonstriker-${p.name}`}
             className={nonStriker === p.id ? "on" : ""}
             onClick={() => setNonStriker(p.id)}
             disabled={striker === p.id}
@@ -523,11 +555,11 @@ function ExtraSheet({
   onClose: () => void;
 }) {
   return (
-    <div className="card">
+    <div className="card" data-testid="extra-sheet">
       <h2 style={{ marginTop: 0 }}>{kind === "bye" ? "Byes" : "Leg-byes"} — how many run?</h2>
       <div className="chip-select">
         {[1, 2, 3, 4].map((n) => (
-          <button key={n} onClick={() => onPick(n)}>
+          <button key={n} data-testid={`extra-runs-${n}`} onClick={() => onPick(n)}>
             {n}
           </button>
         ))}
@@ -570,12 +602,17 @@ function WicketSheet({
   const meta = WICKETS.find((w) => w.key === type)!;
 
   return (
-    <div className="card">
+    <div className="card" data-testid="wicket-sheet">
       <h2 style={{ marginTop: 0 }}>How out?</h2>
       {freeHit && <p className="notice warn small">Free hit — only run out / obstructing counts.</p>}
-      <div className="chip-select">
+      <div className="chip-select" data-testid="wicket-types">
         {WICKETS.map((w) => (
-          <button key={w.key} className={type === w.key ? "on" : ""} onClick={() => setType(w.key)}>
+          <button
+            key={w.key}
+            data-testid={`wkt-${w.key}`}
+            className={type === w.key ? "on" : ""}
+            onClick={() => setType(w.key)}
+          >
             {w.label}
           </button>
         ))}
@@ -584,7 +621,7 @@ function WicketSheet({
       {type === "run_out" && (
         <>
           <div className="section-title">Who is out?</div>
-          <div className="chip-select">
+          <div className="chip-select" data-testid="runout-who">
             <button className={who === "striker" ? "on" : ""} onClick={() => setWho("striker")}>
               {striker}
             </button>
@@ -593,7 +630,7 @@ function WicketSheet({
             </button>
           </div>
           <div className="section-title">Runs completed first</div>
-          <div className="chip-select">
+          <div className="chip-select" data-testid="runout-runs">
             {[0, 1, 2, 3].map((n) => (
               <button key={n} className={runs === n ? "on" : ""} onClick={() => setRuns(n)}>
                 {n}
@@ -604,7 +641,10 @@ function WicketSheet({
       )}
 
       {meta.cross && (
-        <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, textTransform: "none", fontSize: "0.9rem", color: "var(--fg)" }}>
+        <label
+          data-testid="wicket-crossed"
+          style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, textTransform: "none", fontSize: "0.9rem", color: "var(--fg)" }}
+        >
           <input
             type="checkbox"
             checked={crossed}
@@ -618,7 +658,11 @@ function WicketSheet({
       {meta.needsFielder && (
         <>
           <label>Fielder{type === "stumped" ? " / keeper" : ""}</label>
-          <select value={fielderId} onChange={(e) => setFielderId(e.target.value)}>
+          <select
+            data-testid="wicket-fielder"
+            value={fielderId}
+            onChange={(e) => setFielderId(e.target.value)}
+          >
             <option value="">—</option>
             {fielders.map((f) => (
               <option key={f.id} value={f.id}>
@@ -630,6 +674,7 @@ function WicketSheet({
       )}
 
       <button
+        data-testid="wicket-confirm"
         className="btn btn-danger btn-block"
         style={{ marginTop: 16 }}
         onClick={() =>
