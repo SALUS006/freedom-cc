@@ -58,6 +58,10 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page.getByRole("link", { name: "Register with a club code" })).toBeVisible();
     await expect(page.getByRole("link", { name: /admin sign in/i })).toHaveCount(0);
     await expect(page.getByText(/invite code/i)).toHaveCount(0);
+
+    // no visible admin button, but the logo is a quiet way in
+    await page.getByTestId("admin-icon-link").click();
+    await expect(page).toHaveURL(/\/admin\/sign-in$/);
   });
 
   test("admin creates the club", async () => {

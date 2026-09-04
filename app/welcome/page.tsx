@@ -19,7 +19,9 @@ export default async function Welcome() {
       }}
     >
       <div className="center">
-        <img src="/icons/icon.svg" alt="" className="hero-mark" width={76} height={76} />
+        <Link href="/admin/sign-in" aria-label="Club admin sign-in" data-testid="admin-icon-link">
+          <img src="/icons/icon.svg" alt="" className="hero-mark" width={76} height={76} />
+        </Link>
         <h1
           style={{
             fontSize: "2rem",
