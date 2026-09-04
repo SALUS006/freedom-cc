@@ -54,7 +54,12 @@ export default function SignIn() {
           </button>
         </form>
       </div>
-      <p className="small center muted" style={{ marginTop: 16 }}>
+      <p className="small center" style={{ marginTop: 14 }}>
+        <Link href="/forgot-password" className="muted">
+          Forgot your password?
+        </Link>
+      </p>
+      <p className="small center muted" style={{ marginTop: 10 }}>
         Have an invite code? <Link href="/register">Register</Link>
       </p>
     </div>

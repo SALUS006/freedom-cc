@@ -8,6 +8,8 @@ const PUBLIC_PREFIXES = [
   "/register",
   "/create-club",
   "/admin/sign-in",
+  "/forgot-password",
+  "/reset-password",
   "/offline",
 ];
 

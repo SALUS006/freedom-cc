@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { currentClub, listMembers } from "@/lib/data";
 import { blendedRating } from "@/lib/rating";
+import { Avatar } from "@/app/components/Avatar";
 
 export const dynamic = "force-dynamic";
 
@@ -10,11 +11,6 @@ const ROLE_LABEL: Record<string, string> = {
   keeper: "WK",
   allrounder: "AR",
 };
-
-function initials(name: string) {
-  const p = name.trim().split(/\s+/);
-  return ((p[0]?.[0] ?? "") + (p[1]?.[0] ?? "")).toUpperCase() || "?";
-}
 
 export default async function Players() {
   const club = await currentClub();
@@ -39,12 +35,7 @@ export default async function Players() {
           return (
             <Link key={m.id} href={`/players/${m.id}`} className="list-tap">
               <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                <span
-                  className="crest"
-                  style={{ width: 34, height: 34, borderRadius: 10, fontSize: "0.9rem" }}
-                >
-                  {initials(m.name)}
-                </span>
+                <Avatar memberId={m.id} name={m.name} hasAvatar={m.has_avatar} size={36} />
                 <span style={{ minWidth: 0 }}>
                   <span className="lead">{m.name}</span>
                   <div className="sub">{roles.join(" · ") || "no role set"}</div>

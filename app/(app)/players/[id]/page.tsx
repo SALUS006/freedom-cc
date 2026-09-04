@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { one } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { memberMatchCount } from "@/lib/data";
+import { Avatar } from "@/app/components/Avatar";
 import type { Member } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,11 @@ export default async function PlayerDetail({ params }: { params: Promise<{ id: s
         <h1>{member.name}</h1>
       </div>
 
-      <div className="chip-select" style={{ marginBottom: 6 }}>
+      <div style={{ display: "flex", justifyContent: "center", margin: "6px 0 14px" }}>
+        <Avatar memberId={member.id} name={member.name} hasAvatar={member.has_avatar} size={96} />
+      </div>
+
+      <div className="chip-select" style={{ marginBottom: 6, justifyContent: "center" }}>
         {member.roles.map((r) => (
           <span key={r} className="pill turf">
             {ROLE_LABEL[r] ?? r}

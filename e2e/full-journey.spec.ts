@@ -1,6 +1,7 @@
 import { test, expect, field, registerViaApi } from "./fixtures";
 import { devices, type BrowserContext, type Page } from "@playwright/test";
 import { Scorer } from "./pages/scorer";
+import { latestResetLink } from "./db";
 
 /**
  * End-to-end walk-through of the whole app: admin creates a club, players
@@ -62,6 +63,7 @@ test.describe("Freedom CC — full journey", () => {
   test("admin creates the club", async () => {
     await page.goto("/admin/sign-in");
     await expect(page.getByRole("button", { name: /sign in as admin/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /forgot your password/i })).toBeVisible();
     await page.getByRole("link", { name: /create one/i }).click();
 
     await expect(page.getByRole("heading", { name: /create your club/i })).toBeVisible();
@@ -155,7 +157,7 @@ test.describe("Freedom CC — full journey", () => {
     await sliders.nth(1).fill("6");
     await sliders.nth(2).fill("7");
 
-    await page.getByRole("button", { name: /^save/i }).click();
+    await page.getByRole("button", { name: /^save$/i }).click();
     await expect(page.getByRole("button", { name: /saved/i })).toBeVisible();
 
     await page.reload();
@@ -183,6 +185,112 @@ test.describe("Freedom CC — full journey", () => {
   test("non-admin cannot reach the admin console", async () => {
     await page.goto("/admin");
     await expect(page).toHaveURL(/\/$/);
+  });
+
+  // --- profile picture / account details / password reset ---
+
+  const PNG_1PX =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  let inviteeEmail = INVITEE.email;
+
+  test("player uploads a photo and edits their account", async () => {
+    await signIn(inviteeEmail, "brandnew123");
+    await page.goto("/profile");
+
+    await page.getByTestId("avatar-input").setInputFiles({
+      name: "photo.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(PNG_1PX, "base64"),
+    });
+    await expect(page.getByTestId("avatar-uploader").locator("img.avatar-img")).toBeVisible();
+
+    // can't steal another member's email
+    await field(page, "Name").fill("Renamed Invitee");
+    await field(page, "Email").fill("player1@test.cc");
+    await page.getByRole("button", { name: /save account details/i }).click();
+    await expect(page.locator(".error")).toContainText(/already uses that email/i);
+
+    await field(page, "Email").fill("renamed@test.cc");
+    await page.getByRole("button", { name: /save account details/i }).click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+    await page.reload();
+    await expect(field(page, "Name")).toHaveValue("Renamed Invitee");
+    inviteeEmail = "renamed@test.cc";
+
+    // the new photo shows up in the directory too
+    await page.goto("/players");
+    await expect(page.locator("img.avatar-img").first()).toBeVisible();
+  });
+
+  test("forgot-password: full self-serve reset from the landing screen", async () => {
+    await page.request.post("/api/auth/sign-out");
+
+    // discoverable from the player sign-in page too
+    await page.goto("/sign-in");
+    await expect(page.getByRole("link", { name: /forgot your password/i })).toBeVisible();
+    await page.getByRole("link", { name: /forgot your password/i }).click();
+    await expect(page).toHaveURL(/\/forgot-password$/);
+
+    await field(page, "Email").fill(inviteeEmail);
+    await page.getByRole("button", { name: /send reset link/i }).click();
+    await expect(page.getByTestId("forgot-sent")).toBeVisible();
+
+    const link = await latestResetLink(inviteeEmail);
+    expect(link, `no reset email found for ${inviteeEmail}`).toBeTruthy();
+
+    await page.goto(link!);
+    await field(page, "New password").fill("selfserve123");
+    await field(page, "Confirm password").fill("selfserve123");
+    await page.getByRole("button", { name: /set new password/i }).click();
+    await expect(page.getByTestId("reset-done")).toBeVisible();
+
+    await signIn(inviteeEmail, "selfserve123");
+    await expect(page).not.toHaveURL(/\/sign-in/);
+  });
+
+  test("admin edits a player and issues a password reset", async () => {
+    await signIn(ADMIN.email, ADMIN.password);
+    const roster = await (await page.request.get("/api/players")).json();
+    const player = roster.find((r: { email: string }) => r.email === inviteeEmail);
+    expect(player).toBeTruthy();
+
+    await page.goto(`/admin/players/${player.id}`);
+    await expect(field(page, "Name")).toHaveValue("Renamed Invitee");
+
+    // admin can set the player's photo on their behalf
+    await page.getByTestId("avatar-input").setInputFiles({
+      name: "admin-set.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(PNG_1PX, "base64"),
+    });
+    await expect(page.getByTestId("avatar-uploader").locator("img.avatar-img")).toBeVisible();
+    const avatarRes = await page.request.get(`/api/members/${player.id}/avatar`);
+    expect(avatarRes.ok()).toBeTruthy();
+    expect(avatarRes.headers()["content-type"]).toContain("image");
+
+    await field(page, "Name").fill("Admin Named");
+    await page.getByRole("button", { name: /save details/i }).click();
+    await expect(page.getByTestId("admin-player-msg")).toContainText("Saved");
+
+    await page.getByRole("button", { name: /send reset/i }).click();
+    const msg = await page.getByTestId("admin-player-msg").innerText();
+    const link = msg.match(/https?:\/\/\S+\/reset-password\?token=\S+/)?.[0];
+    expect(link, `reset link in: ${msg}`).toBeTruthy();
+
+    await page.goto(link!);
+    await field(page, "New password").fill("afterreset123");
+    await field(page, "Confirm password").fill("afterreset123");
+    await page.getByRole("button", { name: /set new password/i }).click();
+    await expect(page.getByTestId("reset-done")).toBeVisible();
+
+    await signIn(inviteeEmail, "afterreset123");
+    await expect(page).not.toHaveURL(/\/sign-in/);
+
+    // admin list reflects the renamed player
+    await signIn(ADMIN.email, ADMIN.password);
+    await page.goto("/admin");
+    await expect(page.getByText("Admin Named")).toBeVisible();
   });
 
   test("admin creates a match day", async () => {
@@ -327,6 +435,36 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page.getByText(/Side B won by 3 wickets/)).toBeVisible();
     await expect(page.locator("table.card-table").first()).toBeVisible();
     await expect(page.locator(".ballseq .ball").first()).toBeVisible();
+  });
+
+  test("admin resets their own forgotten password", async () => {
+    await page.request.post("/api/auth/sign-out");
+    await page.goto("/admin/sign-in");
+    await page.getByRole("link", { name: /forgot your password/i }).click();
+    await expect(page).toHaveURL(/\/forgot-password$/);
+
+    await field(page, "Email").fill(ADMIN.email);
+    await page.getByRole("button", { name: /send reset link/i }).click();
+    await expect(page.getByTestId("forgot-sent")).toBeVisible();
+
+    const link = await latestResetLink(ADMIN.email);
+    expect(link, `no reset email found for admin ${ADMIN.email}`).toBeTruthy();
+
+    await page.goto(link!);
+    await field(page, "New password").fill("adminreset123");
+    await field(page, "Confirm password").fill("adminreset123");
+    await page.getByRole("button", { name: /set new password/i }).click();
+    await expect(page.getByTestId("reset-done")).toBeVisible();
+
+    // old password rejected, new one signs the admin back into the console
+    const stale = await page.request.post("/api/auth/sign-in", {
+      data: { email: ADMIN.email, password: ADMIN.password },
+    });
+    expect(stale.status()).toBe(401);
+
+    await signIn(ADMIN.email, "adminreset123");
+    await page.goto("/admin");
+    await expect(page.getByTestId("invite-code")).toBeVisible();
   });
 
   test("sign out returns to the landing page", async () => {

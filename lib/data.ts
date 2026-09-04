@@ -24,6 +24,7 @@ export interface AdminMember {
   name: string;
   email: string;
   is_admin: boolean;
+  has_avatar: boolean;
   consent_at: string | null;
   password_reset_required: boolean;
   created_at: string;
@@ -31,10 +32,18 @@ export interface AdminMember {
 
 export async function adminMembers(clubId: string): Promise<AdminMember[]> {
   return query<AdminMember>(
-    `select id, name, email, is_admin, consent_at, password_reset_required, created_at
+    `select id, name, email, is_admin, has_avatar, consent_at, password_reset_required, created_at
        from members where club_id = $1
       order by is_admin desc, (consent_at is null), name`,
     [clubId]
+  );
+}
+
+export async function adminMember(id: string, clubId: string): Promise<AdminMember | null> {
+  return one<AdminMember>(
+    `select id, name, email, is_admin, has_avatar, consent_at, password_reset_required, created_at
+       from members where id = $1 and club_id = $2`,
+    [id, clubId]
   );
 }
 

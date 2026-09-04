@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import type { AdminMember } from "@/lib/data";
+import { Avatar } from "@/app/components/Avatar";
 
 function statusOf(m: AdminMember): { label: string; cls: string } {
   if (m.is_admin) return { label: "Admin", cls: "brand" };
@@ -52,6 +54,7 @@ export function AdminConsole({
           name,
           email,
           is_admin: false,
+          has_avatar: false,
           consent_at: null,
           password_reset_required: true,
           created_at: new Date().toISOString(),
@@ -145,20 +148,42 @@ export function AdminConsole({
         {members.map((m) => {
           const s = statusOf(m);
           return (
-            <div key={m.id} className="list-tap" style={{ alignItems: "flex-start" }}>
-              <span style={{ minWidth: 0 }}>
-                <span className="lead">{m.name}</span>
-                <div className="sub">{m.email}</div>
+            <Link
+              key={m.id}
+              href={`/admin/players/${m.id}`}
+              className="list-tap"
+              style={{ alignItems: "center" }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                <Avatar memberId={m.id} name={m.name} hasAvatar={m.has_avatar} size={36} />
+                <span style={{ minWidth: 0 }}>
+                  <span className="lead">{m.name}</span>
+                  <div className="sub">{m.email}</div>
+                </span>
               </span>
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flex: "none" }}>
+              <span
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 6,
+                  flex: "none",
+                }}
+              >
                 <span className={`pill ${s.cls}`}>{s.label}</span>
                 {!m.consent_at && !m.is_admin && (
-                  <button className="btn btn-sm btn-ghost" onClick={() => reinvite(m)}>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      reinvite(m);
+                    }}
+                  >
                     Resend
                   </button>
                 )}
               </span>
-            </div>
+            </Link>
           );
         })}
       </div>

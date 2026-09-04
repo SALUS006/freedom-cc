@@ -44,6 +44,11 @@ export default async function Welcome() {
             Register with a club code
           </Link>
         </div>
+        <p className="small center" style={{ margin: "12px 0 0" }}>
+          <Link href="/forgot-password" className="muted">
+            Forgot your password?
+          </Link>
+        </p>
       </div>
 
       <p className="small center muted" style={{ marginTop: 18 }}>

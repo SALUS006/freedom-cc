@@ -13,7 +13,7 @@ export async function GET() {
     const member = await one<Member>(
       `select id, club_id, name, email, phone, roles, batting_style, bowling_type,
               bat_self, bowl_self, field_self, is_keeper, happy_to_captain, is_admin,
-              consent_version, consent_at, created_at
+              has_avatar, consent_version, consent_at, created_at
          from members where id = $1`,
       [session.memberId]
     );

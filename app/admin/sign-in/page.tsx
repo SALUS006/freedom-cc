@@ -59,7 +59,12 @@ export default function AdminSignIn() {
         </form>
       </div>
 
-      <p className="small center muted" style={{ marginTop: 18 }}>
+      <p className="small center" style={{ marginTop: 14 }}>
+        <Link href="/forgot-password" className="muted">
+          Forgot your password?
+        </Link>
+      </p>
+      <p className="small center muted" style={{ marginTop: 10 }}>
         No club yet? <Link href="/create-club">Create one</Link>
         <br />
         Player? <Link href="/sign-in">Member sign-in</Link>

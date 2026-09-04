@@ -1,7 +1,18 @@
 import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "node:crypto";
 
 export function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, 10);
+}
+
+/** A single-use password-reset token: give the raw token to the user, store the hash. */
+export function makeResetToken(): { token: string; hash: string } {
+  const token = randomBytes(32).toString("hex");
+  return { token, hash: hashToken(token) };
+}
+
+export function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 export function verifyPassword(plain: string, hash: string): Promise<boolean> {

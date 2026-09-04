@@ -1007,6 +1007,26 @@ table.card-table .how {
   border-radius: 20px;
   box-shadow: var(--sh-2);
 }
+
+.avatar-img {
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex: none;
+  font-family: var(--font-display);
+  font-weight: 700;
+  background: var(--brand-050);
+  color: var(--brand);
+  border: 1px solid var(--line);
+}
 .skeleton {
   background: linear-gradient(90deg, var(--surface-2), var(--line), var(--surface-2));
   background-size: 200% 100%;

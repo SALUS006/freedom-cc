@@ -40,6 +40,20 @@ export const onboardingSchema = z.object({
   consent: z.literal(true),
 });
 
+export const accountSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  email: z.string().trim().email().max(160),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email().max(160),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().trim().min(20).max(120),
+  password: z.string().min(8).max(200),
+});
+
 export const profileSchema = z.object({
   phone: z.string().trim().max(40).optional().or(z.literal("")),
   roles: z.array(roleEnum).max(4),

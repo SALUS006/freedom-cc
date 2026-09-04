@@ -2,6 +2,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Member, Role } from "@/lib/types";
+import { AvatarUploader } from "@/app/components/AvatarUploader";
 
 const ROLES: { key: Role; label: string }[] = [
   { key: "batter", label: "Batter" },
@@ -16,6 +17,9 @@ function ProfileForm() {
   const welcome = params.get("welcome") === "1";
 
   const [m, setM] = useState<Member | null>(null);
+  const [acct, setAcct] = useState({ name: "", email: "" });
+  const [acctMsg, setAcctMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [acctBusy, setAcctBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +27,10 @@ function ProfileForm() {
   useEffect(() => {
     fetch("/api/me")
       .then((r) => r.json())
-      .then(setM)
+      .then((d: Member) => {
+        setM(d);
+        setAcct({ name: d.name, email: d.email });
+      })
       .catch(() => setError("Could not load your profile"));
   }, []);
 
@@ -70,6 +77,27 @@ function ProfileForm() {
     }
   }
 
+  async function saveAccount() {
+    setAcctBusy(true);
+    setAcctMsg(null);
+    try {
+      const res = await fetch("/api/me/account", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(acct),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not save");
+      setAcctMsg({ kind: "ok", text: "Saved" });
+      if (m) setM({ ...m, name: acct.name, email: acct.email });
+      router.refresh();
+    } catch (err) {
+      setAcctMsg({ kind: "err", text: err instanceof Error ? err.message : "Could not save" });
+    } finally {
+      setAcctBusy(false);
+    }
+  }
+
   async function signOut() {
     await fetch("/api/auth/sign-out", { method: "POST" });
     router.push("/welcome");
@@ -111,6 +139,42 @@ function ProfileForm() {
           sides.
         </p>
       )}
+
+      <h2>Account</h2>
+      <div className="card">
+        <AvatarUploader
+          memberId={m.id}
+          name={acct.name || m.name}
+          hasAvatar={m.has_avatar}
+          endpoint="/api/me/avatar"
+        />
+        <label>Name</label>
+        <input
+          type="text"
+          value={acct.name}
+          onChange={(e) => setAcct({ ...acct, name: e.target.value })}
+        />
+        <label>Email</label>
+        <input
+          type="email"
+          value={acct.email}
+          onChange={(e) => setAcct({ ...acct, email: e.target.value })}
+          autoComplete="email"
+        />
+        {acctMsg && (
+          <p className={acctMsg.kind === "ok" ? "notice" : "error"} style={{ marginTop: 10 }}>
+            {acctMsg.text}
+          </p>
+        )}
+        <button
+          className="btn btn-ghost btn-block"
+          style={{ marginTop: 12 }}
+          onClick={saveAccount}
+          disabled={acctBusy}
+        >
+          {acctBusy ? "Saving…" : "Save account details"}
+        </button>
+      </div>
 
       <h2>Roles</h2>
       <div className="chip-select">

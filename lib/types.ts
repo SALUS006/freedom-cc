@@ -25,6 +25,7 @@ export interface Member {
   is_keeper: boolean;
   happy_to_captain: boolean;
   is_admin: boolean;
+  has_avatar: boolean;
   consent_version: string | null;
   consent_at: string | null;
   created_at: string;
