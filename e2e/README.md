@@ -65,6 +65,15 @@ advance), no-ball + free hit, four, six, bye, dot + **Undo**, over completion +
 (fielder + crossed), run-out — to **all out**. Innings 2 chases the target down.
 Result asserted: `Side B won by 3 wickets (N balls to spare)`.
 
+## Screenshots
+
+Every key screen gets a numbered, full-page screenshot as the journey passes
+through it — `e2e/screenshots/01-welcome.png`, `02-admin-sign-in.png`, …
+`29-signed-out-welcome.png` — so there's an accurate visual record of each step
+beyond the pass/fail dot, without opening the HTML report. Overwritten each
+run; not committed (gitignored). Failure screenshots and full videos still land
+in `test-results/` / the HTML report as before.
+
 ## Profiles, photos & password resets covered
 
 - Player uploads a profile photo (client-resized PNG), edits name/email from

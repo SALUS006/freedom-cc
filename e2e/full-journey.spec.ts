@@ -2,6 +2,21 @@ import { test, expect, field, registerViaApi } from "./fixtures";
 import { devices, type BrowserContext, type Page } from "@playwright/test";
 import { Scorer } from "./pages/scorer";
 import { hasEmail, latestResetLink } from "./db";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+
+// A numbered screenshot per key screen — proof of what each step actually
+// rendered, beyond the failure-only screenshots and the video capture.
+const SCREEN_DIR = path.join(process.cwd(), "e2e", "screenshots");
+mkdirSync(SCREEN_DIR, { recursive: true });
+let shotSeq = 0;
+async function snap(page: Page, name: string) {
+  shotSeq += 1;
+  await page.screenshot({
+    path: path.join(SCREEN_DIR, `${String(shotSeq).padStart(2, "0")}-${name}.png`),
+    fullPage: true,
+  });
+}
 
 /**
  * End-to-end walk-through of the whole app: admin creates a club, players
@@ -58,10 +73,12 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page.getByRole("link", { name: "Register with a club code" })).toBeVisible();
     await expect(page.getByRole("link", { name: /admin sign in/i })).toHaveCount(0);
     await expect(page.getByText(/invite code/i)).toHaveCount(0);
+    await snap(page, "welcome");
 
     // no visible admin button, but the logo is a quiet way in
     await page.getByTestId("admin-icon-link").click();
     await expect(page).toHaveURL(/\/admin\/sign-in$/);
+    await snap(page, "admin-sign-in");
   });
 
   test("admin creates the club", async () => {
@@ -85,6 +102,7 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page).toHaveURL(/\/admin$/);
     inviteCode = (await page.getByTestId("invite-code").innerText()).trim();
     expect(inviteCode).toMatch(/^[A-Z0-9]{6}$/);
+    await snap(page, "admin-console");
 
     // the admin accepted the waiver too — they get a confirmation copy
     expect(await hasEmail(ADMIN.email, "consent confirmation")).toBe(true);
@@ -104,6 +122,7 @@ test.describe("Freedom CC — full journey", () => {
 
     await expect(page.getByText(INVITEE.email)).toBeVisible();
     await expect(page.getByText("Invited").first()).toBeVisible();
+    await snap(page, "admin-invite-sent");
   });
 
   test("three players register through the UI", async () => {
@@ -118,6 +137,7 @@ test.describe("Freedom CC — full journey", () => {
       const submit = page.getByRole("button", { name: /create account/i });
       await expect(submit).toBeDisabled();
       await page.getByRole("checkbox").check();
+      if (n === 1) await snap(page, "register-form");
       await submit.click();
       await expect(page).not.toHaveURL(/\/register/);
     }
@@ -146,6 +166,7 @@ test.describe("Freedom CC — full journey", () => {
     await signIn(INVITEE.email, inviteeTempPassword);
     await expect(page).toHaveURL(/\/onboarding$/);
     await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible();
+    await snap(page, "onboarding");
     await field(page, "New password").fill("brandnew123");
     await field(page, "Confirm password").fill("brandnew123");
     await page.getByRole("checkbox").check();
@@ -176,6 +197,7 @@ test.describe("Freedom CC — full journey", () => {
     await page.reload();
     await expect(sliders.nth(0)).toHaveValue("9");
     await expect(page.getByRole("button", { name: "Batter" })).toHaveClass(/on/);
+    await snap(page, "profile-ratings");
   });
 
   test("home shows club stats", async () => {
@@ -184,15 +206,18 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page.locator(".stat-tile").filter({ hasText: "Players" })).toContainText("12");
     await expect(page.getByText(inviteCode)).toBeVisible();
     await expect(page.getByRole("link", { name: /admin & invites/i })).toHaveCount(0);
+    await snap(page, "home-dashboard");
   });
 
   test("players directory and a player detail", async () => {
     await page.goto("/players");
     await expect(page.getByText("Player-1", { exact: true })).toBeVisible();
     await expect(page.getByText("Player-8", { exact: true })).toBeVisible();
+    await snap(page, "players-directory");
     await page.getByText("Player-4", { exact: true }).click();
     await expect(page).toHaveURL(/\/players\/[0-9a-f-]+$/);
     await expect(page.getByText(/Matches played/)).toBeVisible();
+    await snap(page, "player-detail");
   });
 
   test("non-admin cannot reach the admin console", async () => {
@@ -216,6 +241,7 @@ test.describe("Freedom CC — full journey", () => {
       buffer: Buffer.from(PNG_1PX, "base64"),
     });
     await expect(page.getByTestId("avatar-uploader").locator("img.avatar-img")).toBeVisible();
+    await snap(page, "avatar-uploaded");
 
     // can't steal another member's email
     await field(page, "Name").fill("Renamed Invitee");
@@ -234,6 +260,7 @@ test.describe("Freedom CC — full journey", () => {
     // the new photo shows up in the directory too
     await page.goto("/players");
     await expect(page.locator("img.avatar-img").first()).toBeVisible();
+    await snap(page, "directory-with-avatar");
   });
 
   test("forgot-password: full self-serve reset from the landing screen", async () => {
@@ -248,6 +275,7 @@ test.describe("Freedom CC — full journey", () => {
     await field(page, "Email").fill(inviteeEmail);
     await page.getByRole("button", { name: /send reset link/i }).click();
     await expect(page.getByTestId("forgot-sent")).toBeVisible();
+    await snap(page, "forgot-password-sent");
 
     const link = await latestResetLink(inviteeEmail);
     expect(link, `no reset email found for ${inviteeEmail}`).toBeTruthy();
@@ -257,6 +285,7 @@ test.describe("Freedom CC — full journey", () => {
     await field(page, "Confirm password").fill("selfserve123");
     await page.getByRole("button", { name: /set new password/i }).click();
     await expect(page.getByTestId("reset-done")).toBeVisible();
+    await snap(page, "reset-password-done");
 
     await signIn(inviteeEmail, "selfserve123");
     await expect(page).not.toHaveURL(/\/sign-in/);
@@ -285,6 +314,7 @@ test.describe("Freedom CC — full journey", () => {
     await field(page, "Name").fill("Admin Named");
     await page.getByRole("button", { name: /save details/i }).click();
     await expect(page.getByTestId("admin-player-msg")).toContainText("Saved");
+    await snap(page, "admin-edit-player");
 
     await page.getByRole("button", { name: /send reset/i }).click();
     const msg = await page.getByTestId("admin-player-msg").innerText();
@@ -318,6 +348,7 @@ test.describe("Freedom CC — full journey", () => {
     }
     await page.getByRole("button", { name: /create match day/i }).click();
     await expect(page).toHaveURL(/\/play\/day\/[0-9a-f-]+$/);
+    await snap(page, "match-day");
   });
 
   test("squad selection shows the balance report, then create the match", async () => {
@@ -346,17 +377,26 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page.getByTestId("balance-a-overall")).toContainText(/\d\.\d \/ 10/);
     await expect(page.getByTestId("balance-b-overall")).toContainText(/\d\.\d \/ 10/);
     await expect(page.getByTestId("balance-verdict")).not.toBeEmpty();
+    await snap(page, "squad-balance-report");
 
     await page.getByRole("button", { name: /create match & go to toss/i }).click();
     await expect(page).toHaveURL(/\/setup$/);
   });
 
   test("toss and start the match", async () => {
+    // the setup page fetches match data client-side — wait past its "Loading…"
+    // before capturing, or the screenshot just shows a spinner state
+    await expect(page.getByRole("heading", { name: "Who won the toss?" })).toBeVisible();
+    await snap(page, "toss-screen");
     await page.locator(".chip-select").first().getByRole("button").first().click(); // toss winner = Side A
     await page.getByRole("button", { name: "Bat", exact: true }).click();
     await page.getByRole("button", { name: /start match/i }).click();
     await expect(page).toHaveURL(/\/score$/);
     matchId = page.url().match(/match\/([0-9a-f-]+)/)![1];
+
+    // same for the scoring console's own client-side fetch
+    await expect(page.getByTestId("pick-two")).toBeVisible();
+    await snap(page, "openers-picker");
   });
 
   test("first innings — every delivery type, pickers, undo, wickets, all out", async () => {
@@ -383,6 +423,7 @@ test.describe("Freedom CC — full journey", () => {
     await s.run(6);
     await s.expectScore("13/0");
     await s.expectFreeHit(false);
+    await snap(page, "scoring-mid-innings");
 
     await s.bye(1);
     await s.expectScore("14/0");
@@ -403,13 +444,22 @@ test.describe("Freedom CC — full journey", () => {
     await s.pickNewBatter("Player-3");
     await s.expectScore("16/1");
 
-    await s.wicket({ kind: "caught", fielder: "Player-5", crossed: true });
+    // caught, captured mid-flow: dismissal type chosen, then crossed + fielder filled in
+    await page.getByTestId("key-wicket").click();
+    await expect(page.getByTestId("wicket-sheet")).toBeVisible();
+    await page.getByTestId("wkt-caught").click();
+    await snap(page, "wicket-sheet-caught");
+    await page.getByTestId("wicket-crossed").locator('input[type="checkbox"]').check();
+    await page.getByTestId("wicket-fielder").selectOption({ label: "Player-5" });
+    await snap(page, "wicket-sheet-caught-filled");
+    await page.getByTestId("wicket-confirm").click();
     await s.pickNewBatter("Player-4");
     await s.expectScore("16/2");
 
     await s.wicket({ kind: "run_out", who: "striker", runs: 1, crossed: false });
     await s.expectInningsComplete();
     await s.expectScore("17/3");
+    await snap(page, "innings-complete");
 
     await s.startSecondInnings();
   });
@@ -418,6 +468,7 @@ test.describe("Freedom CC — full journey", () => {
     await page.goto("/");
     await expect(page.getByText("Live now")).toBeVisible();
     await expect(page.locator(".match-card").first()).toContainText(/Side A v Side B/);
+    await snap(page, "home-live-now");
   });
 
   test("second innings — chase down the target", async () => {
@@ -427,6 +478,7 @@ test.describe("Freedom CC — full journey", () => {
     await s.pickBowler("Player-1");
     await s.waitForKeypad();
     await expect(page.getByTestId("chase")).toContainText("Need 18");
+    await snap(page, "second-innings-chase");
 
     await s.run(6);
     await s.run(6);
@@ -441,6 +493,7 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page.locator(".notice.win")).toContainText(/Side B won by 3 wickets/);
     await expect(page.locator(".notice.win")).toContainText(/balls? to spare/);
     await expect(page.locator("table.card-table")).toHaveCount(4);
+    await snap(page, "match-result");
   });
 
   test("live scorecard renders the final state", async () => {
@@ -448,6 +501,7 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page.getByText(/Side B won by 3 wickets/)).toBeVisible();
     await expect(page.locator("table.card-table").first()).toBeVisible();
     await expect(page.locator(".ballseq .ball").first()).toBeVisible();
+    await snap(page, "live-scorecard");
   });
 
   test("admin resets their own forgotten password", async () => {
@@ -478,11 +532,13 @@ test.describe("Freedom CC — full journey", () => {
     await signIn(ADMIN.email, "adminreset123");
     await page.goto("/admin");
     await expect(page.getByTestId("invite-code")).toBeVisible();
+    await snap(page, "admin-self-reset-done");
   });
 
   test("sign out returns to the landing page", async () => {
     await page.goto("/profile");
     await page.getByRole("button", { name: /sign out/i }).click();
     await expect(page).toHaveURL(/\/welcome$/);
+    await snap(page, "signed-out-welcome");
   });
 });
