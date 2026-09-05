@@ -52,7 +52,7 @@ export default function NewMatchDay() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not create match day");
-      router.push(`/play/day/${data.id}`);
+      router.push(data.joinedExisting ? `/play/day/${data.id}?joined=1` : `/play/day/${data.id}`);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -72,6 +72,10 @@ export default function NewMatchDay() {
       <form onSubmit={submit}>
         <label>Date</label>
         <input type="date" value={playedOn} onChange={(e) => setPlayedOn(e.target.value)} required />
+        <p className="small muted" style={{ margin: "4px 0 0" }}>
+          There's only one match day per date — if one already exists for this date, your picks
+          here join its turnout instead of starting a new one.
+        </p>
         <label>Ground (optional)</label>
         <input type="text" value={ground} onChange={(e) => setGround(e.target.value)} />
         <label>Notes (optional)</label>

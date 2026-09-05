@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { getMatchDay, matchDayPlayers } from "@/lib/data";
+import { getMatchDay, matchDayPlayers, memberCount } from "@/lib/data";
 import { loadDayCards } from "@/lib/match";
 
 export const dynamic = "force-dynamic";
@@ -10,14 +10,25 @@ function crest(name: string) {
   return name.replace(/[^a-z]/gi, "").slice(0, 2).toUpperCase() || "?";
 }
 
-export default async function MatchDayPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MatchDayPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ joined?: string }>;
+}) {
   const { id } = await params;
+  const { joined } = await searchParams;
   const session = await getSession();
   if (!session) return null;
   const day = await getMatchDay(id, session.clubId);
   if (!day) notFound();
 
-  const [players, cards] = await Promise.all([matchDayPlayers(id), loadDayCards(id)]);
+  const [players, cards, totalMembers] = await Promise.all([
+    matchDayPlayers(id),
+    loadDayCards(id),
+    memberCount(session.clubId),
+  ]);
 
   return (
     <div>
@@ -37,6 +48,13 @@ export default async function MatchDayPage({ params }: { params: Promise<{ id: s
         {day.ground ? `${day.ground} · ` : ""}
         {players.length} players
       </p>
+
+      {joined === "1" && (
+        <p className="notice" data-testid="joined-existing-day">
+          There's already a match day for this date — your picks were added to its turnout instead
+          of starting a new one.
+        </p>
+      )}
 
       <Link className="btn btn-primary" href={`/play/day/${id}/new-match`}>
         New match
@@ -80,7 +98,27 @@ export default async function MatchDayPage({ params }: { params: Promise<{ id: s
         </div>
       )}
 
-      <div className="section-title">Turnout</div>
+      <div className="row" style={{ margin: "24px 0 10px" }}>
+        <span className="section-title" style={{ margin: 0 }}>
+          Turnout
+        </span>
+        <Link
+          href={`/play/day/${id}/turnout`}
+          className="pill brand"
+          data-testid="edit-turnout-link"
+          style={{ textTransform: "none", letterSpacing: "normal" }}
+        >
+          {players.length < totalMembers
+            ? `Add players (${totalMembers - players.length} missing)`
+            : "Edit"}
+        </Link>
+      </div>
+      {players.length < totalMembers && (
+        <p className="notice warn small" style={{ marginTop: 0 }}>
+          Only {players.length} of {totalMembers} registered players are in today's turnout —
+          anyone who registered after this match day was created won't show up until you add them.
+        </p>
+      )}
       <div className="card flush">
         {players.map((p) => (
           <div key={p.id} className="list-tap">

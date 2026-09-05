@@ -38,6 +38,7 @@ let baseURL = "";
 let inviteCode = "";
 let inviteeTempPassword = "";
 let matchId = "";
+let dayId = "";
 
 test.beforeAll(async ({ browser }, testInfo) => {
   baseURL = (testInfo.project.use.baseURL as string) ?? "http://localhost:3000";
@@ -348,7 +349,56 @@ test.describe("Freedom CC — full journey", () => {
     }
     await page.getByRole("button", { name: /create match day/i }).click();
     await expect(page).toHaveURL(/\/play\/day\/[0-9a-f-]+$/);
+    dayId = page.url().match(/day\/([0-9a-f-]+)/)![1];
     await snap(page, "match-day");
+  });
+
+  test("re-creating a match day for the same date joins the existing one", async () => {
+    // one match day per club per date: submitting "New match day" again for
+    // today must not create a second one
+    await page.goto("/play/new");
+    for (const n of [1, 2, 3, 4]) {
+      await page
+        .locator(".list-tap", { hasText: new RegExp(`Player-${n}\\b`) })
+        .locator('input[type="checkbox"]')
+        .check();
+    }
+    await page.getByRole("button", { name: /create match day/i }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/play/day/${dayId}\\?joined=1$`));
+    await expect(page.getByTestId("joined-existing-day")).toBeVisible();
+    await snap(page, "joined-existing-match-day");
+
+    await page.goto("/play");
+    await expect(page.locator(".match-card")).toHaveCount(1);
+  });
+
+  test("match day turnout can be refreshed to add newly-registered players", async () => {
+    // reproduces the reported bug: only the 8 ticked at creation show up, even
+    // though 12 are registered — the day page must say so and offer a fix
+    await page.goto(`/play/day/${dayId}`);
+    await expect(page.getByText(/Only 8 of 12 registered players/i)).toBeVisible();
+    const editLink = page.getByTestId("edit-turnout-link");
+    await expect(editLink).toContainText("4 missing");
+    await snap(page, "turnout-gap-warning");
+
+    await editLink.click();
+    await expect(page).toHaveURL(new RegExp(`/play/day/${dayId}/turnout$`));
+    await expect(page.getByTestId("turnout-count")).toContainText("8 of 12");
+
+    // Player-9 registered after this match day was created — currently unchecked
+    await expect(page.getByTestId("turnout-Player-9")).not.toBeChecked();
+    await snap(page, "edit-turnout");
+
+    await page.getByTestId("turnout-select-all").click();
+    await expect(page.getByTestId("turnout-count")).toContainText("12 of 12");
+    await page.getByRole("button", { name: /save turnout/i }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/play/day/${dayId}$`));
+    await expect(page.getByText(/Only 8 of 12/i)).toHaveCount(0);
+    await expect(page.getByText("Player-9", { exact: true })).toBeVisible();
+    await expect(page.getByText("Player-10", { exact: true })).toBeVisible();
+    await snap(page, "turnout-fixed");
   });
 
   test("squad selection shows the balance report, then create the match", async () => {

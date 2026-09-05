@@ -2,12 +2,23 @@ import type { NextRequest } from "next/server";
 import { tx } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { matchDaySchema } from "@/lib/validation";
+import { findMatchDayByDate, matchDayPlayers, setMatchDayTurnout } from "@/lib/data";
 import { handleError, ok } from "@/lib/api";
 
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     const body = matchDaySchema.parse(await req.json());
+
+    // One match day per club per date: reuse it and just merge the turnout in,
+    // rather than creating a second one for the same day.
+    const existing = await findMatchDayByDate(session.clubId, body.playedOn);
+    if (existing) {
+      const current = await matchDayPlayers(existing.id);
+      const merged = new Set([...current.map((m) => m.id), ...body.playerIds]);
+      await setMatchDayTurnout(existing.id, session.clubId, [...merged]);
+      return ok({ id: existing.id, joinedExisting: true });
+    }
 
     const day = await tx(async (client) => {
       const res = await client.query(
@@ -27,7 +38,7 @@ export async function POST(req: NextRequest) {
       return created;
     });
 
-    return ok({ id: day.id });
+    return ok({ id: day.id, joinedExisting: false });
   } catch (err) {
     return handleError(err);
   }

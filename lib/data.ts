@@ -71,6 +71,14 @@ export async function getMatchDay(id: string, clubId: string): Promise<MatchDay 
   return one<MatchDay>(`select * from match_days where id = $1 and club_id = $2`, [id, clubId]);
 }
 
+/** One match day per club per calendar date — find the existing one, if any. */
+export async function findMatchDayByDate(clubId: string, playedOn: string): Promise<MatchDay | null> {
+  return one<MatchDay>(`select * from match_days where club_id = $1 and played_on = $2`, [
+    clubId,
+    playedOn,
+  ]);
+}
+
 export async function matchDayPlayers(dayId: string): Promise<Member[]> {
   return query<Member>(
     `select m.* from members m
@@ -79,6 +87,52 @@ export async function matchDayPlayers(dayId: string): Promise<Member[]> {
       order by m.name`,
     [dayId]
   );
+}
+
+export async function memberCount(clubId: string): Promise<number> {
+  const row = await one<{ n: string }>(`select count(*)::text as n from members where club_id = $1`, [
+    clubId,
+  ]);
+  return row ? Number(row.n) : 0;
+}
+
+/** Members already placed in a squad for a match on this day — turnout can't drop them. */
+export async function matchDayLockedPlayerIds(dayId: string): Promise<string[]> {
+  const rows = await query<{ member_id: string }>(
+    `select distinct s.member_id
+       from match_squads s
+       join matches m on m.id = s.match_id
+      where m.match_day_id = $1`,
+    [dayId]
+  );
+  return rows.map((r) => r.member_id);
+}
+
+/**
+ * Replaces a match day's turnout with `playerIds` (restricted to club members).
+ * Anyone already in a squad for a match that day is kept regardless, so an
+ * existing match's lineup never breaks.
+ */
+export async function setMatchDayTurnout(
+  dayId: string,
+  clubId: string,
+  playerIds: string[]
+): Promise<void> {
+  const locked = await matchDayLockedPlayerIds(dayId);
+  const keep = new Set([...playerIds, ...locked]);
+  await query(
+    `delete from match_day_players
+      where match_day_id = $1 and member_id <> all($2::uuid[])`,
+    [dayId, [...keep]]
+  );
+  for (const id of keep) {
+    await query(
+      `insert into match_day_players (match_day_id, member_id)
+       select $1, $2 where exists (select 1 from members where id = $2 and club_id = $3)
+       on conflict do nothing`,
+      [dayId, id, clubId]
+    );
+  }
 }
 
 export async function matchesForDay(dayId: string): Promise<MatchRow[]> {

@@ -73,6 +73,10 @@ export const matchDaySchema = z.object({
   playerIds: z.array(z.string().uuid()).min(4).max(40),
 });
 
+export const updateTurnoutSchema = z.object({
+  playerIds: z.array(z.string().uuid()).min(4).max(60),
+});
+
 export const createMatchSchema = z.object({
   matchDayId: z.string().uuid(),
   overs: z.number().int().min(1).max(50),
