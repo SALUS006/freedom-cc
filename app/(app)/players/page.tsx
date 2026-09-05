@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { currentClub, listMembers } from "@/lib/data";
-import { blendedRating } from "@/lib/rating";
+import { computeClubPlayerRatings } from "@/lib/player-ratings";
 import { Avatar } from "@/app/components/Avatar";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,7 @@ export default async function Players() {
   const club = await currentClub();
   if (!club) return null;
   const members = await listMembers(club.id);
+  const ratings = await computeClubPlayerRatings(club.id, members);
 
   return (
     <div>
@@ -28,9 +29,10 @@ export default async function Players() {
 
       <div className="card flush">
         {members.map((m) => {
-          const bat = blendedRating(m.bat_self, null, 0);
-          const bowl = blendedRating(m.bowl_self, null, 0);
-          const roles = m.roles.map((r) => ROLE_LABEL[r] ?? r);
+          const r = ratings.get(m.id);
+          const bat = r?.bat ?? m.bat_self;
+          const bowl = r?.bowl ?? m.bowl_self;
+          const roles = m.roles.map((r2) => ROLE_LABEL[r2] ?? r2);
           if (m.is_keeper && !m.roles.includes("keeper")) roles.push("WK");
           return (
             <Link key={m.id} href={`/players/${m.id}`} className="list-tap">

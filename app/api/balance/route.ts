@@ -3,6 +3,7 @@ import { z } from "zod";
 import { query } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { balanceReport, maxOversPerBowler, type BalancePlayer } from "@/lib/balance";
+import { computeClubPlayerRatings } from "@/lib/player-ratings";
 import { handleError, ok } from "@/lib/api";
 import type { Member } from "@/lib/types";
 
@@ -21,25 +22,30 @@ export async function POST(req: NextRequest) {
     const ids = [...body.a, ...body.b];
     if (ids.length === 0) return ok(null);
 
-    const members = await query<Member & { matches: number }>(
-      `select m.*, coalesce((select count(distinct match_id) from match_squads s where s.member_id = m.id),0)::int as matches
-         from members m where m.club_id = $1 and m.id = any($2::uuid[])`,
+    const members = await query<Member>(
+      `select * from members where club_id = $1 and id = any($2::uuid[])`,
       [session.clubId, ids]
     );
+    const ratings = await computeClubPlayerRatings(session.clubId, members);
     const byId = new Map(members.map((m) => [m.id, m]));
+
     const toPlayers = (list: string[]): BalancePlayer[] =>
       list
         .map((id) => byId.get(id))
-        .filter((m): m is Member & { matches: number } => !!m)
-        .map((m) => ({
-          id: m.id,
-          name: m.name,
-          bat: m.bat_self,
-          bowl: m.bowl_self,
-          field: m.field_self,
-          isKeeper: m.is_keeper || m.roles.includes("keeper"),
-          matches: m.matches,
-        }));
+        .filter((m): m is Member => !!m)
+        .map((m) => {
+          const r = ratings.get(m.id);
+          return {
+            id: m.id,
+            name: m.name,
+            // blended self + earned-from-performance rating, once there's enough match history
+            bat: r?.bat ?? m.bat_self,
+            bowl: r?.bowl ?? m.bowl_self,
+            field: r?.field ?? m.field_self,
+            isKeeper: m.is_keeper || m.roles.includes("keeper"),
+            matches: r?.matches ?? 0,
+          };
+        });
 
     const report = balanceReport(
       toPlayers(body.a),

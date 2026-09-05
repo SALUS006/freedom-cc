@@ -1,7 +1,8 @@
 import "server-only";
-import { one, query } from "./db";
+import { one, query, tx } from "./db";
 import { getSession } from "./session";
-import type { Club, InningsRow, MatchDay, MatchRow, MatchSquadEntry, Member } from "./types";
+import type { Club, InningsRow, MatchDay, MatchRow, MatchSquadEntry, Member, Side } from "./types";
+import type { PlayerMatchStat } from "./scoring/points";
 
 export async function currentMember(): Promise<Member | null> {
   const session = await getSession();
@@ -166,4 +167,126 @@ export async function inningsEvents(inningsId: string) {
     `select seq, type, payload from match_events where innings_id = $1 order by seq`,
     [inningsId]
   );
+}
+
+// ---------- performance stats & Man of the Match ----------
+
+export async function savePlayerMatchStats(matchId: string, stats: PlayerMatchStat[]): Promise<void> {
+  await tx(async (client) => {
+    await client.query(`delete from player_match_stats where match_id = $1`, [matchId]);
+    for (const s of stats) {
+      await client.query(
+        `insert into player_match_stats (
+           member_id, match_id, side, batted, runs, balls, fours, sixes, how_out,
+           bowled, legal_balls, runs_conceded, wickets, maidens,
+           catches, stumpings, run_outs,
+           bat_points, bowl_points, field_points, result_points, total_points
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+        [
+          s.memberId,
+          matchId,
+          s.side,
+          s.batted,
+          s.runs,
+          s.balls,
+          s.fours,
+          s.sixes,
+          s.howOut,
+          s.bowled,
+          s.legalBalls,
+          s.runsConceded,
+          s.wickets,
+          s.maidens,
+          s.catches,
+          s.stumpings,
+          s.runOuts,
+          s.batPoints,
+          s.bowlPoints,
+          s.fieldPoints,
+          s.resultPoints,
+          s.totalPoints,
+        ]
+      );
+    }
+  });
+}
+
+export async function setPlayerOfMatch(
+  matchId: string,
+  memberId: string | null,
+  auto: boolean
+): Promise<void> {
+  await query(
+    `update matches set player_of_match_id = $2, player_of_match_auto = $3 where id = $1`,
+    [matchId, memberId, auto]
+  );
+}
+
+export interface MatchStatRow {
+  member_id: string;
+  name: string;
+  side: Side;
+  batted: boolean;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+  how_out: string | null;
+  bowled: boolean;
+  legal_balls: number;
+  runs_conceded: number;
+  wickets: number;
+  maidens: number;
+  catches: number;
+  stumpings: number;
+  run_outs: number;
+  bat_points: number;
+  bowl_points: number;
+  field_points: number;
+  result_points: number;
+  total_points: number;
+}
+
+export async function matchStatsFor(matchId: string): Promise<MatchStatRow[]> {
+  return query<MatchStatRow>(
+    `select s.*, m.name
+       from player_match_stats s
+       join members m on m.id = s.member_id
+      where s.match_id = $1
+      order by s.total_points desc`,
+    [matchId]
+  );
+}
+
+export interface ClubStatRow {
+  member_id: string;
+  batted: boolean;
+  bowled: boolean;
+  bat_points: number;
+  bowl_points: number;
+  field_points: number;
+}
+
+/** Every performance row for a club, across all completed matches — for earned ratings. */
+export async function matchStatsForClub(clubId: string): Promise<ClubStatRow[]> {
+  return query<ClubStatRow>(
+    `select s.member_id, s.batted, s.bowled, s.bat_points, s.bowl_points, s.field_points
+       from player_match_stats s
+       join matches ma on ma.id = s.match_id
+       join match_days d on d.id = ma.match_day_id
+      where d.club_id = $1`,
+    [clubId]
+  );
+}
+
+export async function motmCounts(clubId: string): Promise<Map<string, number>> {
+  const rows = await query<{ player_of_match_id: string; n: string }>(
+    `select ma.player_of_match_id, count(*)::text as n
+       from matches ma
+       join match_days d on d.id = ma.match_day_id
+      where d.club_id = $1 and ma.player_of_match_id is not null
+      group by ma.player_of_match_id`,
+    [clubId]
+  );
+  return new Map(rows.map((r) => [r.player_of_match_id, Number(r.n)]));
 }

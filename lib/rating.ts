@@ -1,6 +1,6 @@
-// Blend a player's self-rating with an earned rating derived from match points.
-// Earned ratings arrive in the next build; until then `earned` is null and the
-// blended value is just the self-rating.
+// Blend a player's self-rating with an earned rating derived from match points
+// (see lib/player-ratings.ts). Until a player has enough match history, `earned`
+// is null and the blended value is just the self-rating.
 export function selfWeight(matchesPlayed: number): number {
   return Math.min(1, Math.max(0.15, 1 - matchesPlayed / 12));
 }

@@ -543,7 +543,18 @@ test.describe("Freedom CC — full journey", () => {
     await expect(page.locator(".notice.win")).toContainText(/Side B won by 3 wickets/);
     await expect(page.locator(".notice.win")).toContainText(/balls? to spare/);
     await expect(page.locator("table.card-table")).toHaveCount(4);
+    // performance-based Man of the Match, picked automatically right after completion
+    await expect(page.getByTestId("man-of-match")).toContainText("Player of the Match");
+    await expect(page.getByTestId("man-of-match").locator(".lead")).not.toBeEmpty();
     await snap(page, "match-result");
+  });
+
+  test("admin overrides the Man of the Match pick", async () => {
+    await page.getByTestId("man-of-match").getByRole("button", { name: "Change" }).click();
+    await page.getByRole("button", { name: /^Player-1(\s|—|$)/ }).click();
+    await expect(page.getByTestId("man-of-match")).toContainText("Player-1");
+    await expect(page.getByTestId("man-of-match")).toContainText("admin pick");
+    await snap(page, "match-result-motm-override");
   });
 
   test("live scorecard renders the final state", async () => {

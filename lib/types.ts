@@ -55,6 +55,8 @@ export interface MatchRow {
   elected: "bat" | "field" | null;
   status: "setup" | "live" | "complete" | "abandoned";
   result: MatchResult | null;
+  player_of_match_id: string | null;
+  player_of_match_auto: boolean;
   created_at: string;
 }
 

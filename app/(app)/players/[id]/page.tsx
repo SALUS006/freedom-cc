@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { one } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { memberMatchCount } from "@/lib/data";
+import { memberMatchCount, motmCounts } from "@/lib/data";
+import { computeClubPlayerRatings } from "@/lib/player-ratings";
 import { Avatar } from "@/app/components/Avatar";
 import type { Member } from "@/lib/types";
 
@@ -46,6 +47,9 @@ export default async function PlayerDetail({ params }: { params: Promise<{ id: s
   if (!member) notFound();
   const matches = await memberMatchCount(member.id);
   const isMe = session?.memberId === member.id;
+  const ratings = session?.clubId ? await computeClubPlayerRatings(session.clubId, [member]) : new Map();
+  const rating = ratings.get(member.id);
+  const motm = session?.clubId ? (await motmCounts(session.clubId)).get(member.id) ?? 0 : 0;
 
   return (
     <div>
@@ -71,14 +75,21 @@ export default async function PlayerDetail({ params }: { params: Promise<{ id: s
         {member.roles.length === 0 && !member.is_keeper && (
           <span className="pill">No role set</span>
         )}
+        {motm > 0 && (
+          <span className="pill turf" title="Man of the Match awards">
+            🏅 MOTM ×{motm}
+          </span>
+        )}
       </div>
 
       <div className="card">
-        <Bar label="Batting" value={member.bat_self} />
-        <Bar label="Bowling" value={member.bowl_self} />
-        <Bar label="Fielding" value={member.field_self} />
+        <Bar label="Batting" value={rating ? rating.bat : member.bat_self} />
+        <Bar label="Bowling" value={rating ? rating.bowl : member.bowl_self} />
+        <Bar label="Fielding" value={rating ? rating.field : member.field_self} />
         <p className="small muted" style={{ marginBottom: 0 }}>
-          Self-rated. Earned ratings from match performance arrive in a later update.
+          {rating && rating.matches >= 3
+            ? "Blended from self-rating and match performance."
+            : "Self-rated. Blends in match performance after a few completed matches."}
         </p>
       </div>
 
